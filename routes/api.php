@@ -58,3 +58,6 @@ Route::delete('matches/{partido}/players/{player}', [PartidoController::class, '
 
 // --- Ruta para la Valla Menos Vencida (Clean Sheet) ---
 Route::get('clean-sheets', [CleanSheetController::class, 'index']); // Descomentar cuando se cree el controlador
+
+// --- Ruta para la Tabla de Posiciones ---
+Route::get('teams/standings', [TeamController::class, 'getStandings']);

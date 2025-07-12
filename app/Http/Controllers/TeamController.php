@@ -2,90 +2,104 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Team; // Importa el modelo Team
+use App\Models\Team;
+use App\Models\Partido; // ¡Asegúrate de importar el modelo Partido!
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException; // Para manejar errores de validación
-use App\Events\TeamCreated; // Importa los eventos de WebSocket para equipos
+use Illuminate\Validation\ValidationException;
+use App\Events\TeamCreated;
 use App\Events\TeamUpdated;
 use App\Events\TeamDeleted;
+use Illuminate\Support\Facades\DB; // ¡Asegúrate de importar DB!
 
 class TeamController extends Controller
 {
+    // ... (tus métodos index, store, show, update, destroy existentes)
+
     /**
-     * Display a listing of the resource.
-     * Obtiene y lista todos los equipos.
+     * Calcula y retorna la tabla de posiciones de los equipos.
      *
      * @return \Illuminate\Http\JsonResponse
      */
-    public function index()
+    public function getStandings()
     {
-        return response()->json(Team::all()); // Retorna todos los equipos en formato JSON
-    }
+        $teams = Team::all();
+        $standings = [];
 
-    /**
-     * Store a newly created resource in storage.
-     * Almacena un nuevo equipo en la base de datos.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function store(Request $request)
-    {
-        // Valida los datos de entrada
-        $request->validate([
-            'name' => 'required|string|max:255|unique:teams,name', // El nombre es requerido, string, max 255 y debe ser único
-            'city' => 'nullable|string|max:255', // La ciudad es opcional
-        ]);
+        foreach ($teams as $team) {
+            $pj = 0; // Partidos Jugados
+            $pg = 0; // Partidos Ganados
+            $pe = 0; // Partidos Empatados
+            $pp = 0; // Partidos Perdidos
+            $gf = 0; // Goles a Favor
+            $gc = 0; // Goles en Contra
+            $puntos = 0;
 
-        $team = Team::create($request->all()); // Crea el equipo con los datos validados
-        event(new TeamCreated($team)); // Dispara un evento WebSocket informando la creación
-        return response()->json($team, 201); // Retorna el equipo creado con un código de estado 201 (Created)
-    }
+            // Partidos como equipo local
+            $homeMatches = $team->homeMatches; // Accede a la relación definida en el modelo Team
+            foreach ($homeMatches as $match) {
+                $pj++;
+                $gf += $match->home_team_score;
+                $gc += $match->away_team_score;
 
-    /**
-     * Display the specified resource.
-     * Muestra un equipo específico por su ID.
-     *
-     * @param  \App\Models\Team  $team
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function show(Team $team)
-    {
-        return response()->json($team); // Retorna el equipo encontrado
-    }
+                if ($match->home_team_score > $match->away_team_score) {
+                    $pg++;
+                    $puntos += 3;
+                } elseif ($match->home_team_score < $match->away_team_score) {
+                    $pp++;
+                } else {
+                    $pe++;
+                    $puntos += 1;
+                }
+            }
 
-    /**
-     * Update the specified resource in storage.
-     * Actualiza un equipo existente en la base de datos.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @param  \App\Models\Team  $team
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function update(Request $request, Team $team)
-    {
-        // Valida los datos de entrada para la actualización
-        $request->validate([
-            'name' => 'required|string|max:255|unique:teams,name,' . $team->id, // El nombre es único, excepto para el propio ID del equipo
-            'city' => 'nullable|string|max:255',
-        ]);
+            // Partidos como equipo visitante
+            $awayMatches = $team->awayMatches; // Accede a la relación definida en el modelo Team
+            foreach ($awayMatches as $match) {
+                $pj++;
+                $gf += $match->away_team_score;
+                $gc += $match->home_team_score;
 
-        $team->update($request->all()); // Actualiza el equipo
-        event(new TeamUpdated($team)); // Dispara un evento WebSocket informando la actualización
-        return response()->json($team); // Retorna el equipo actualizado
-    }
+                if ($match->away_team_score > $match->home_team_score) {
+                    $pg++;
+                    $puntos += 3;
+                } elseif ($match->away_team_score < $match->home_team_score) {
+                    $pp++;
+                } else {
+                    $pe++;
+                    $puntos += 1;
+                }
+            }
 
-    /**
-     * Remove the specified resource from storage.
-     * Elimina un equipo de la base de datos.
-     *
-     * @param  \App\Models\Team  $team
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function destroy(Team $team)
-    {
-        $team->delete(); // Elimina el equipo
-        event(new TeamDeleted($team->id)); // Dispara un evento WebSocket informando la eliminación (solo el ID)
-        return response()->json(null, 204); // Retorna una respuesta sin contenido con código 204 (No Content)
+            $gd = $gf - $gc; // Diferencia de Goles
+
+            $standings[] = [
+                'id' => $team->id,
+                'name' => $team->name,
+                'PJ' => $pj,
+                'PG' => $pg,
+                'PE' => $pe,
+                'PP' => $pp,
+                'GF' => $gf,
+                'GC' => $gc,
+                'GD' => $gd,
+                'PUNTOS' => $puntos,
+            ];
+        }
+
+        // Ordenar la tabla de posiciones:
+        // 1. Por PUNTOS (descendente)
+        // 2. Por GD (Diferencia de Goles) (descendente)
+        // 3. Por GF (Goles a Favor) (descendente)
+        usort($standings, function ($a, $b) {
+            if ($a['PUNTOS'] != $b['PUNTOS']) {
+                return $b['PUNTOS'] <=> $a['PUNTOS'];
+            }
+            if ($a['GD'] != $b['GD']) {
+                return $b['GD'] <=> $a['GD'];
+            }
+            return $b['GF'] <=> $a['GF'];
+        });
+
+        return response()->json($standings);
     }
 }
