@@ -8,6 +8,7 @@ use App\Http\Controllers\TeamController;
 use App\Http\Controllers\PlayerController;
 use App\Http\Controllers\PartidoController; // Nuestro controlador para los partidos
 use App\Http\Controllers\FileUploadController; // Para la subida de archivos
+use App\Http\Controllers\CleanSheetController;
 
 /*
 |--------------------------------------------------------------------------
@@ -56,5 +57,4 @@ Route::put('matches/{partido}/players/{player}', [PartidoController::class, 'upd
 Route::delete('matches/{partido}/players/{player}', [PartidoController::class, 'detachPlayerFromMatch']);
 
 // --- Ruta para la Valla Menos Vencida (Clean Sheet) ---
-// Todavía no hemos creado este controlador, pero aquí estará su ruta
-// Route::get('clean-sheets', [CleanSheetController::class, 'index']); // Descomentar cuando se cree el controlador
+Route::get('clean-sheets', [CleanSheetController::class, 'index']); // Descomentar cuando se cree el controlador
