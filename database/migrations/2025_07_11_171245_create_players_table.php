@@ -14,8 +14,9 @@ return new class extends Migration
         Schema::create('players', function (Blueprint $table) {
             $table->id();
             $table->string('name');
-            $table->string('position')->nullable(); // Ej: Delantero, Medio, Defensa, Portero
-            $table->foreignId('team_id')->nullable()->constrained()->onDelete('set null'); // Relación con la tabla 'teams'
+            $table->string('position')->nullable();
+            $table->foreignId('team_id')->nullable()->constrained()->onDelete('set null');
+            $table->date('birth_date')->nullable(); // <-- ¡AÑADE ESTA LÍNEA!
             $table->timestamps();
         });
     }

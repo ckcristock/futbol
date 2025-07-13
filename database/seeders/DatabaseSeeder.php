@@ -2,7 +2,6 @@
 
 namespace Database\Seeders;
 
-// use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
@@ -12,11 +11,12 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // \App\Models\User::factory(10)->create();
-
-        // \App\Models\User::factory()->create([
-        //     'name' => 'Test User',
-        //     'email' => 'test@example.com',
-        // ]);
+        // Llama a los seeders en el orden de dependencia
+        $this->call([
+            TeamSeeder::class,
+            PlayerSeeder::class,        // Depende de TeamSeeder
+            PartidoSeeder::class,       // Depende de TeamSeeder
+            MatchPlayerSeeder::class,   // Depende de PartidoSeeder y PlayerSeeder
+        ]);
     }
 }

@@ -18,6 +18,7 @@ class Player extends Model
         'name',
         'position',
         'team_id', // Para la relación con el equipo
+        'birth_date', // <-- ¡AÑADE ESTA LÍNEA!
     ];
 
     /**
