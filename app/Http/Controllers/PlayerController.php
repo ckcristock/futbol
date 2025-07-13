@@ -3,11 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Models\Player; // Importa el modelo Player
+use App\Models\Team;   // Importa el modelo Team para usar en getTopScorers
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException; // Para manejar errores de validación
 use App\Events\PlayerCreated; // Eventos de WebSocket para jugadores
 use App\Events\PlayerUpdated;
 use App\Events\PlayerDeleted;
+use Illuminate\Support\Facades\DB; // Para usar consultas de base de datos crudas en getTopScorers
 
 class PlayerController extends Controller
 {
@@ -87,5 +89,44 @@ class PlayerController extends Controller
         $player->delete(); // Elimina el jugador
         event(new PlayerDeleted($playerId)); // Dispara un evento WebSocket informando la eliminación
         return response()->json(null, 204); // Retorna una respuesta sin contenido (éxito)
+    }
+
+    /**
+     * Calcula y retorna la lista de los máximos goleadores.
+     * Este método es llamado por la ruta /api/players/top-scorers.
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getTopScorers()
+    {
+        $topScorers = Player::select(
+            'players.id',
+            'players.name',
+            // Asegúrate de que 'birth_date' esté en tu tabla players si lo necesitas para la edad
+            // 'players.birth_date', 
+            'teams.name as team_name',
+            DB::raw('SUM(match_players.goals) as total_goals')
+        )
+            ->join('teams', 'players.team_id', '=', 'teams.id') // Une con la tabla teams
+            ->join('match_players', 'players.id', '=', 'match_players.player_id') // Une con la tabla pivote
+            // Agrupar por todos los campos seleccionados que no son agregados (SUM)
+            ->groupBy('players.id', 'players.name', 'teams.name')
+            ->orderByDesc('total_goals') // Ordena por total de goles de forma descendente
+            ->limit(10) // Limita el resultado a los 10 primeros
+            ->get();
+
+        /*
+        // Opcional: Calcular la edad si tienes 'birth_date' y la necesitas en el frontend
+        // Asegúrate de que Carbon esté importado: use Carbon\Carbon;
+        $topScorers->each(function ($player) {
+            if (isset($player->birth_date) && $player->birth_date) {
+                $player->age = Carbon\Carbon::parse($player->birth_date)->age;
+            } else {
+                $player->age = null;
+            }
+        });
+        */
+
+        return response()->json($topScorers);
     }
 }
