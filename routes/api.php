@@ -21,19 +21,29 @@ use App\Http\Controllers\CleanSheetController;
 |
 */
 
-// --- Rutas para la gestión de Equipos (Teams) ---
-// apiResource crea rutas para: GET /teams, POST /teams, GET /teams/{id}, PUT /teams/{id}, DELETE /teams/{id}
-Route::apiResource('teams', TeamController::class);
+// --- Rutas ESPECÍFICAS para Equipos (Teams) - ¡COLOCADAS PRIMERO! ---
+// Ruta para la Tabla de Posiciones (más específica que el recurso 'teams/{id}')
+Route::get('teams/standings', [TeamController::class, 'getStandings']);
 
 // Ruta específica para la subida masiva de equipos desde archivos .xls o .csv
 Route::post('teams/upload', [FileUploadController::class, 'uploadTeams']);
 
-// --- Rutas para la gestión de Jugadores (Players) ---
-// apiResource crea rutas para: GET /players, POST /players, GET /players/{id}, PUT /players/{id}, DELETE /players/{id}
-Route::apiResource('players', PlayerController::class);
+// --- Rutas genéricas apiResource para Equipos (Teams) ---
+// apiResource crea rutas para: GET /teams, POST /teams, GET /teams/{id}, PUT /teams/{id}, DELETE /teams/{id}
+Route::apiResource('teams', TeamController::class);
+
+
+// --- Rutas ESPECÍFICAS para Jugadores (Players) - ¡COLOCADAS PRIMERO! ---
+// Ruta para obtener la lista de los máximos goleadores
+Route::get('players/top-scorers', [PlayerController::class, 'getTopScorers']);
 
 // Ruta específica para la subida masiva de jugadores desde archivos .xls o .csv
 Route::post('players/upload', [FileUploadController::class, 'uploadPlayers']);
+
+// --- Rutas genéricas apiResource para Jugadores (Players) ---
+// apiResource crea rutas para: GET /players, POST /players, GET /players/{id}, PUT /players/{id}, DELETE /players/{id}
+Route::apiResource('players', PlayerController::class);
+
 
 // --- Rutas para la gestión de Partidos (Matches) ---
 // apiResource crea rutas para: GET /matches, POST /matches, GET /matches/{id}, PUT /matches/{id}, DELETE /matches/{id}
@@ -43,21 +53,12 @@ Route::apiResource('matches', PartidoController::class);
 // --- Rutas específicas para MatchPlayer (Estadísticas de Jugadores en Partidos) ---
 // Estas rutas manejan la relación entre partidos y jugadores, y sus estadísticas.
 // Nota: 'partido' en el segmento de la URL corresponde al parámetro de ruta del controlador.
-
-// Obtener todos los jugadores y sus estadísticas para un partido específico
 Route::get('matches/{partido}/players', [PartidoController::class, 'getMatchPlayers']);
-
-// Adjuntar jugadores a un partido y establecer/actualizar sus estadísticas iniciales
 Route::post('matches/{partido}/players', [PartidoController::class, 'attachPlayersToMatch']);
-
-// Actualizar las estadísticas de un jugador específico en un partido específico
 Route::put('matches/{partido}/players/{player}', [PartidoController::class, 'updateMatchPlayerStats']);
-
-// Desvincular (eliminar) un jugador de un partido (elimina su entrada en la tabla pivote)
 Route::delete('matches/{partido}/players/{player}', [PartidoController::class, 'detachPlayerFromMatch']);
 
-// --- Ruta para la Valla Menos Vencida (Clean Sheet) ---
-Route::get('clean-sheets', [CleanSheetController::class, 'index']); // Descomentar cuando se cree el controlador
 
-// --- Ruta para la Tabla de Posiciones ---
-Route::get('teams/standings', [TeamController::class, 'getStandings']);
+// --- Ruta para la Valla Menos Vencida (Clean Sheet) ---
+// Esta ruta no colisiona con las apiResource existentes, por lo que su posición es flexible.
+Route::get('clean-sheets', [CleanSheetController::class, 'index']);
