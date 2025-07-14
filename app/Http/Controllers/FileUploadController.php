@@ -9,14 +9,16 @@ use App\Models\Team; // Necesitamos el modelo Team
 use App\Models\Player; // Necesitamos el modelo Player
 use Illuminate\Support\Facades\DB; // Para transacciones de base de datos
 use Illuminate\Validation\ValidationException; // Para manejar errores de validación
-use App\Events\TeamCreated; // Importa los eventos para disparar actualizaciones
-use App\Events\PlayerCreated;
+// Eventos (comentados si no se usan WebSockets activos)
+// use App\Events\TeamCreated;
+// use App\Events\PlayerCreated;
 
 class FileUploadController extends Controller
 {
     /**
      * Sube y procesa un archivo para importar equipos.
      * Soporta .xlsx, .xls, .csv
+     * Normaliza el nombre del equipo a minúsculas antes de procesar.
      *
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\JsonResponse
@@ -54,39 +56,41 @@ class FileUploadController extends Controller
                     continue;
                 }
 
+                $originalName = trim($row[$nameIndex] ?? ''); // Obtener el nombre original del archivo
+                $normalizedName = strtolower($originalName); // ¡NORMALIZAR AQUÍ A MINÚSCULAS!
+
                 $teamData = [];
-                if (isset($row[$nameIndex])) {
-                    $teamData['name'] = trim($row[$nameIndex]);
-                }
+                $teamData['name'] = $normalizedName; // Usar el nombre normalizado para guardar
                 if ($cityIndex !== false && isset($row[$cityIndex])) {
                     $teamData['city'] = trim($row[$cityIndex]);
                 } else {
                     $teamData['city'] = null; // Asegura que 'city' sea null si no está presente
                 }
 
-                // Valida que el nombre no esté vacío
+                // Valida que el nombre normalizado no esté vacío
                 if (empty($teamData['name'])) {
-                    $errors[] = "Fila con nombre de equipo vacío omitida.";
+                    $errors[] = "Fila con nombre de equipo vacío u omitida después de normalizar.";
                     continue;
                 }
 
                 try {
-                    // Busca un equipo por nombre, si existe lo actualiza, si no lo crea
+                    // updateOrCreate ahora buscará y operará con el nombre normalizado.
+                    // Esto maneja duplicados (Real Madrid vs real madrid) actualizando el existente.
                     $team = Team::updateOrCreate(
-                        ['name' => $teamData['name']],
-                        $teamData
+                        ['name' => $teamData['name']], // Busca por 'name' (normalizado)
+                        $teamData                     // Si existe, actualiza; si no, crea
                     );
                     $importedTeamsCount++;
-                    event(new TeamCreated($team)); // Dispara evento de WebSocket (TeamCreated sirve para creado o actualizado)
+                    // event(new TeamCreated($team)); // Descomentar si usas broadcasting
                 } catch (\Illuminate\Database\QueryException $e) {
-                    // Manejo de errores específicos de la base de datos, como nombres duplicados
+                    // Manejo de errores específicos de la base de datos, como nombres duplicados por constraint UNIQUE
                     if ($e->getCode() === '23000') { // Código para violación de unicidad
-                        $errors[] = "Error al importar el equipo '{$teamData['name']}': Nombre duplicado.";
+                        $errors[] = "Error al importar el equipo '{$originalName}': Nombre duplicado (posiblemente por diferencia de mayúsculas/minúsculas o ya existente).";
                     } else {
-                        $errors[] = "Error desconocido al importar el equipo '{$teamData['name']}': " . $e->getMessage();
+                        $errors[] = "Error desconocido al importar el equipo '{$originalName}': " . $e->getMessage();
                     }
                 } catch (\Exception $e) {
-                    $errors[] = "Error al importar el equipo '{$teamData['name']}': " . $e->getMessage();
+                    $errors[] = "Error al importar el equipo '{$originalName}': " . $e->getMessage();
                 }
             }
 
@@ -115,7 +119,7 @@ class FileUploadController extends Controller
     public function uploadPlayers(Request $request)
     {
         $request->validate([
-            'file' => 'required|file|mimes:xlsx,xls,csv|max:2048', // Archivo requerido, tipos permitidos, max 2MB
+            'file' => 'required|file|mimes:xlsx,xls,csv|max:2048',
         ]);
 
         $file = $request->file('file');
@@ -139,10 +143,10 @@ class FileUploadController extends Controller
             $importedPlayersCount = 0;
             $errors = [];
 
-            DB::beginTransaction(); // Inicia una transacción
+            DB::beginTransaction();
 
             foreach ($rows as $row) {
-                if (empty(array_filter($row))) { // Salta filas completamente vacías
+                if (empty(array_filter($row))) {
                     continue;
                 }
 
@@ -161,49 +165,51 @@ class FileUploadController extends Controller
                 if ($teamNameIndex !== false && isset($row[$teamNameIndex])) {
                     $teamName = trim($row[$teamNameIndex]);
                     if (!empty($teamName)) {
-                        $team = Team::where('name', $teamName)->first();
+                        // NORMALIZAR NOMBRE DEL EQUIPO AL BUSCARLO EN LA DB
+                        $normalizedTeamName = strtolower($teamName);
+                        $team = Team::whereRaw('lower(name) = ?', [$normalizedTeamName])->first();
                         if ($team) {
                             $team_id = $team->id;
                         } else {
-                            $errors[] = "Fila con jugador '{$playerData['name']}' omitida: Equipo '{$teamName}' no encontrado.";
+                            $errors[] = "Fila con jugador '{$playerData['name']}' omitida: Equipo '{$teamName}' no encontrado o no normalizado.";
                             continue; // Salta esta fila si el equipo no existe
                         }
                     }
                 }
                 $playerData['team_id'] = $team_id;
 
-                // Valida que el nombre del jugador no esté vacío
                 if (empty($playerData['name'])) {
                     $errors[] = "Fila con nombre de jugador vacío omitida.";
                     continue;
                 }
 
                 try {
-                    // Busca un jugador por nombre, si existe lo actualiza, si no lo crea
                     // Consideración: ¿Los nombres de jugadores son únicos? Si no, se podría actualizar un jugador incorrecto.
                     // Para mayor precisión, se podría buscar por nombre y team_id, o requerir un ID único.
+                    // Si el nombre del jugador debe ser único sin importar mayúsculas/minúsculas:
+                    $playerData['name'] = strtolower(trim($playerData['name'])); // Normalizar nombre del jugador
                     $player = Player::updateOrCreate(
-                        ['name' => $playerData['name']], // Esto podría actualizar un jugador con el mismo nombre pero de otro equipo
+                        ['name' => $playerData['name']],
                         $playerData
                     );
                     $importedPlayersCount++;
-                    event(new PlayerCreated($player)); // Dispara evento de WebSocket
+                    // event(new PlayerCreated($player)); // Descomentar si usas broadcasting
                 } catch (\Exception $e) {
                     $errors[] = "Error al importar el jugador '{$playerData['name']}': " . $e->getMessage();
                 }
             }
 
-            DB::commit(); // Confirma la transacción
+            DB::commit();
 
-            Storage::delete($filePath); // Elimina el archivo después de procesar
+            Storage::delete($filePath);
 
             return response()->json([
                 'message' => "Importación de jugadores completada. {$importedPlayersCount} jugadores procesados.",
                 'errors' => $errors,
             ]);
         } catch (\Exception $e) {
-            DB::rollBack(); // Revierte la transacción
-            Storage::delete($filePath); // Elimina el archivo
+            DB::rollBack();
+            Storage::delete($filePath);
             return response()->json(['error' => 'Error al procesar el archivo: ' . $e->getMessage()], 500);
         }
     }

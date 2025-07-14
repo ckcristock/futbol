@@ -4,14 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Models\Team;
 use App\Models\Partido;
-use Illuminate\Http\Request; // Importante: para poder usar $request en el método index
+use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
-// Aunque no estemos usando WebSockets activos, Laravel sigue intentando emitir.
-// Puedes comentar o eliminar estas líneas si quieres evitar cualquier referencia a eventos.
-use App\Events\TeamCreated;
-use App\Events\TeamUpdated;
-use App\Events\TeamDeleted;
-use Illuminate\Support\Facades\DB; // Asegúrate de importar DB!
+// Eventos (comentados si no se usan WebSockets activos)
+// use App\Events\TeamCreated;
+// use App\Events\TeamUpdated;
+// use App\Events\TeamDeleted;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule; // ¡IMPORTANTE: Importar la clase Rule para validaciones avanzadas!
 
 class TeamController extends Controller
 {
@@ -21,46 +21,57 @@ class TeamController extends Controller
      * Este método es llamado por GET /api/teams
      * Ahora puede incluir los jugadores asociados si se pide con 'withPlayers=true'.
      *
-     * @param  \Illuminate\Http\Request  $request // Importante para leer query parameters
+     * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\JsonResponse
      */
     public function index(Request $request)
     {
-        // Verifica si la solicitud incluye el parámetro 'withPlayers=true'
         if ($request->query('withPlayers')) {
-            // Si el parámetro está presente, carga los equipos EAGER LOADING con sus jugadores
-            return response()->json(Team::with('players')->get()); // Carga equipos con sus jugadores
+            // Carga equipos con sus jugadores (eager loading)
+            return response()->json(Team::with('players')->get());
         }
 
-        // Por defecto, si 'withPlayers' no está, retorna solo los equipos sin sus jugadores
+        // Por defecto, retorna solo los equipos sin sus jugadores
         return response()->json(Team::all());
     }
 
     /**
      * Store a newly created resource in storage.
      * Almacena un nuevo equipo en la base de datos.
-     * Este método es llamado por POST /api/teams
+     * Normaliza el nombre del equipo a minúsculas y valida su unicidad sin importar mayúsculas/minúsculas.
      *
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\JsonResponse
      */
     public function store(Request $request)
     {
+        // Normaliza el nombre: convierte a minúsculas y quita espacios en blanco al inicio/final
+        $normalizedName = strtolower(trim($request->input('name')));
+
+        // Reemplaza el nombre original del request con el normalizado ANTES de la validación
+        $request->merge(['name' => $normalizedName]);
+
         $request->validate([
-            'name' => 'required|string|max:255|unique:teams,name',
+            // Regla de unicidad avanzada para que sea case-insensitive en la base de datos (si la DB lo soporta con COLLATE)
+            'name' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('teams')->where(function ($query) use ($normalizedName) {
+                    return $query->whereRaw('lower(name) = ?', [$normalizedName]);
+                }),
+            ],
             'city' => 'nullable|string|max:255',
         ]);
 
         $team = Team::create($request->all());
-        // Opcional: Si quieres emitir eventos (ahora con driver 'log'), puedes descomentar
-        // event(new TeamCreated($team));
+        // event(new TeamCreated($team)); // Descomentar si usas broadcasting
         return response()->json($team, 201);
     }
 
     /**
      * Display the specified resource.
      * Muestra un equipo específico por su ID.
-     * Este método es llamado por GET /api/teams/{id}
      *
      * @param  \App\Models\Team  $team
      * @return \Illuminate\Http\JsonResponse
@@ -73,7 +84,7 @@ class TeamController extends Controller
     /**
      * Update the specified resource in storage.
      * Actualiza un equipo existente en la base de datos.
-     * Este método es llamado por PUT /api/teams/{id}
+     * Normaliza el nombre del equipo y valida su unicidad.
      *
      * @param  \Illuminate\Http\Request  $request
      * @param  \App\Models\Team  $team
@@ -81,21 +92,33 @@ class TeamController extends Controller
      */
     public function update(Request $request, Team $team)
     {
+        // Normaliza el nombre: convierte a minúsculas y quita espacios en blanco al inicio/final
+        $normalizedName = strtolower(trim($request->input('name')));
+
+        // Reemplaza el nombre original del request con el normalizado ANTES de la validación
+        $request->merge(['name' => $normalizedName]);
+
         $request->validate([
-            'name' => 'required|string|max:255|unique:teams,name,' . $team->id,
+            // Regla de unicidad avanzada: ignora el ID del equipo actual y es case-insensitive
+            'name' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('teams')->ignore($team->id)->where(function ($query) use ($normalizedName) {
+                    return $query->whereRaw('lower(name) = ?', [$normalizedName]);
+                }),
+            ],
             'city' => 'nullable|string|max:255',
         ]);
 
         $team->update($request->all());
-        // Opcional: Si quieres emitir eventos (ahora con driver 'log'), puedes descomentar
-        // event(new TeamUpdated($team));
+        // event(new TeamUpdated($team)); // Descomentar si usas broadcasting
         return response()->json($team);
     }
 
     /**
      * Remove the specified resource from storage.
      * Elimina un equipo de la base de datos.
-     * Este método es llamado por DELETE /api/teams/{id}
      *
      * @param  \App\Models\Team  $team
      * @return \Illuminate\Http\JsonResponse
@@ -103,8 +126,7 @@ class TeamController extends Controller
     public function destroy(Team $team)
     {
         $team->delete();
-        // Opcional: Si quieres emitir eventos (ahora con driver 'log'), puedes descomentar
-        // event(new TeamDeleted($team->id));
+        // event(new TeamDeleted($team->id)); // Descomentar si usas broadcasting
         return response()->json(null, 204);
     }
 
