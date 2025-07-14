@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\Team;
-use App\Models\Partido; // Asegúrate de importar el modelo Partido!
-use Illuminate\Http\Request;
+use App\Models\Partido;
+use Illuminate\Http\Request; // Importante: para poder usar $request en el método index
 use Illuminate\Validation\ValidationException;
+// Aunque no estemos usando WebSockets activos, Laravel sigue intentando emitir.
+// Puedes comentar o eliminar estas líneas si quieres evitar cualquier referencia a eventos.
 use App\Events\TeamCreated;
 use App\Events\TeamUpdated;
 use App\Events\TeamDeleted;
@@ -17,12 +19,21 @@ class TeamController extends Controller
      * Display a listing of the resource.
      * Obtiene y lista todos los equipos.
      * Este método es llamado por GET /api/teams
+     * Ahora puede incluir los jugadores asociados si se pide con 'withPlayers=true'.
      *
+     * @param  \Illuminate\Http\Request  $request // Importante para leer query parameters
      * @return \Illuminate\Http\JsonResponse
      */
-    public function index()
+    public function index(Request $request)
     {
-        return response()->json(Team::all()); // Retorna todos los equipos en formato JSON
+        // Verifica si la solicitud incluye el parámetro 'withPlayers=true'
+        if ($request->query('withPlayers')) {
+            // Si el parámetro está presente, carga los equipos EAGER LOADING con sus jugadores
+            return response()->json(Team::with('players')->get()); // Carga equipos con sus jugadores
+        }
+
+        // Por defecto, si 'withPlayers' no está, retorna solo los equipos sin sus jugadores
+        return response()->json(Team::all());
     }
 
     /**
@@ -41,7 +52,8 @@ class TeamController extends Controller
         ]);
 
         $team = Team::create($request->all());
-        event(new TeamCreated($team)); // Dispara el evento WebSocket
+        // Opcional: Si quieres emitir eventos (ahora con driver 'log'), puedes descomentar
+        // event(new TeamCreated($team));
         return response()->json($team, 201);
     }
 
@@ -75,7 +87,8 @@ class TeamController extends Controller
         ]);
 
         $team->update($request->all());
-        event(new TeamUpdated($team)); // Dispara el evento WebSocket
+        // Opcional: Si quieres emitir eventos (ahora con driver 'log'), puedes descomentar
+        // event(new TeamUpdated($team));
         return response()->json($team);
     }
 
@@ -90,7 +103,8 @@ class TeamController extends Controller
     public function destroy(Team $team)
     {
         $team->delete();
-        event(new TeamDeleted($team->id)); // Dispara el evento WebSocket
+        // Opcional: Si quieres emitir eventos (ahora con driver 'log'), puedes descomentar
+        // event(new TeamDeleted($team->id));
         return response()->json(null, 204);
     }
 

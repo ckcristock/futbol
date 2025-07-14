@@ -40,8 +40,8 @@ class Partido extends Model // <-- Asegúrate de que la clase se llame Partido
     // Relación muchos a muchos con jugadores a través de la tabla pivote match_players
     public function players()
     {
-        return $this->belongsToMany(Player::class, 'match_players')
-            ->withPivot('goals', 'assists', 'played_full_match') // Cargar las columnas extra de la tabla pivote
-            ->withTimestamps(); // Si quieres created_at/updated_at en la tabla pivote
+        return $this->belongsToMany(Player::class, 'match_players', 'match_id', 'player_id')
+            ->withPivot('goals', 'assists', 'played_full_match')
+            ->withTimestamps();
     }
 }
